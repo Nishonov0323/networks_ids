@@ -22,4 +22,8 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/ingest/', views.ingest_packet, name='ingest_packet'),
     path('api/statistics/', views.get_statistics, name='statistics'),
+    path('settings/', views.settings_page, name='settings_page'),
+    path('flows/', views.flows_page, name='flows'),  # Agar hali qo‘shilmagan bo‘lsa
+    path('alerts/', views.alerts_page, name='alerts'),  # Agar hali qo‘shilmagan bo‘lsa
+    path('api/statistics/', views.statistics, name='statistics'),
 ]

@@ -113,7 +113,7 @@ class HierarchicalModelSerializer(serializers.ModelSerializer):
 
     def get_model_names(self, obj):
         """Get the names of models used in this hierarchical model"""
-        return [model.name for model in obj.models.all()]
+        return [model.name for model in obj.modelss.all()]
 
 
 class NetworkInterfaceSerializer(serializers.ModelSerializer):

@@ -355,3 +355,30 @@ def get_statistics(request):
     }
 
     return Response(statistics)
+
+def settings_page(request):
+    return render(request, 'ids/settings.html')
+
+def flows_page(request):
+    return render(request, 'ids/flows.html')
+
+def alerts_page(request):
+    return render(request, 'ids/alerts.html')
+
+@api_view(['GET'])
+def statistics(request):
+    # Categories
+    categories = Alert.objects.values('attack_category').annotate(count=models.Count('id'))
+
+    # Timeline (last 24 hours)
+    last_24h = timezone.now() - timedelta(hours=24)
+    timeline = Alert.objects.filter(timestamp__gte=last_24h)\
+        .extra({'hour': "strftime('%%Y-%%m-%%d %%H', timestamp)"})\
+        .values('hour')\
+        .annotate(count=models.Count('id'))\
+        .order_by('hour')
+
+    return Response({
+        'categories': list(categories),
+        'timeline': list(timeline),
+    })
