@@ -4,7 +4,9 @@ import time
 import logging
 import json
 import requests
-from scapy.all import sniff, IP, TCP, UDP, ICMP, ARP
+from scapy.all import sniff
+from scapy.layers.inet import IP, TCP, UDP, ICMP
+from scapy.layers.l2 import ARP
 from datetime import datetime
 from django.conf import settings
 

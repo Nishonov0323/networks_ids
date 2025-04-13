@@ -4,9 +4,12 @@ from rest_framework.decorators import api_view, action
 from rest_framework.response import Response
 from django.shortcuts import render
 from django.db.models import Count, Q
+from django.db.models.functions import TruncHour  # Added this line
 from django.utils import timezone
 from datetime import timedelta
 import json
+
+from django.views.decorators.csrf import csrf_exempt
 
 from .models import (
     NetworkFlow, Alert, DetectionRule, MLModel,
@@ -53,15 +56,12 @@ def dashboard(request):
 # API Views using DRF ViewSets
 # views.py (continued)
 class NetworkFlowViewSet(viewsets.ModelViewSet):
-    """ViewSet for NetworkFlow model"""
     queryset = NetworkFlow.objects.all().order_by('-timestamp')
     serializer_class = NetworkFlowSerializer
 
     def get_queryset(self):
-        """Filter queryset based on query parameters"""
         queryset = NetworkFlow.objects.all().order_by('-timestamp')
 
-        # Apply filters if provided
         source_ip = self.request.query_params.get('source_ip', None)
         if source_ip:
             queryset = queryset.filter(source_ip=source_ip)
@@ -74,7 +74,14 @@ class NetworkFlowViewSet(viewsets.ModelViewSet):
         if protocol:
             queryset = queryset.filter(protocol=protocol)
 
-        # Time range filter
+        # Filter by alert count
+        alert_count_gt = self.request.query_params.get('alert_count__gt', None)
+        alert_count_eq = self.request.query_params.get('alert_count', None)
+        if alert_count_gt is not None:
+            queryset = queryset.annotate(alert_count=Count('alerts')).filter(alert_count__gt=int(alert_count_gt))
+        if alert_count_eq is not None:
+            queryset = queryset.annotate(alert_count=Count('alerts')).filter(alert_count=int(alert_count_eq))
+
         start_time = self.request.query_params.get('start_time', None)
         if start_time:
             queryset = queryset.filter(timestamp__gte=start_time)
@@ -259,36 +266,27 @@ class TrainingJobViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+# Similarly for the action in NetworkInterfaceViewSet
 class NetworkInterfaceViewSet(viewsets.ModelViewSet):
-    """ViewSet for NetworkInterface model"""
     queryset = NetworkInterface.objects.all().order_by('name')
     serializer_class = NetworkInterfaceSerializer
 
     @action(detail=True, methods=['post'])
+    @csrf_exempt
     def toggle_monitoring(self, request, pk=None):
-        """API endpoint to toggle network interface monitoring status"""
         interface = self.get_object()
         interface.is_monitoring = not interface.is_monitoring
         interface.save()
-
-        # In a real implementation, you would start/stop a packet capture
-        # process for this interface
-
         return Response({'is_monitoring': interface.is_monitoring})
 
 
 # API view for packet ingestion
 @api_view(['POST'])
+@csrf_exempt
 def ingest_packet(request):
-    """API endpoint to ingest a network packet"""
     packet_data = request.data
-
-    # Initialize the packet processor
     processor = PacketProcessor()
-
-    # Process the packet
     flow_key = processor.process_packet(packet_data)
-
     if flow_key:
         return Response({'status': 'Packet processed', 'flow_key': flow_key})
     else:
@@ -356,26 +354,40 @@ def get_statistics(request):
 
     return Response(statistics)
 
+
 def settings_page(request):
     return render(request, 'ids/settings.html')
+
 
 def flows_page(request):
     return render(request, 'ids/flows.html')
 
+
 def alerts_page(request):
-    return render(request, 'ids/alerts.html')
+    context = {
+        'attack_categories': Alert.ATTACK_CATEGORIES
+    }
+    return render(request, 'ids/alerts.html', context)
+
+# Add these new views
+def rules_page(request):
+    return render(request, 'ids/rules.html')
+
+def models_page(request):
+    return render(request, 'ids/models.html')
+
 
 @api_view(['GET'])
 def statistics(request):
     # Categories
-    categories = Alert.objects.values('attack_category').annotate(count=models.Count('id'))
+    categories = Alert.objects.values('attack_category').annotate(count=Count('id'))
 
     # Timeline (last 24 hours)
     last_24h = timezone.now() - timedelta(hours=24)
-    timeline = Alert.objects.filter(timestamp__gte=last_24h)\
-        .extra({'hour': "strftime('%%Y-%%m-%%d %%H', timestamp)"})\
-        .values('hour')\
-        .annotate(count=models.Count('id'))\
+    timeline = Alert.objects.filter(timestamp__gte=last_24h) \
+        .annotate(hour=TruncHour('timestamp')) \
+        .values('hour') \
+        .annotate(count=Count('id')) \
         .order_by('hour')
 
     return Response({

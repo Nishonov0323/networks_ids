@@ -4,6 +4,7 @@ import uuid
 import json
 from django.utils import timezone
 
+
 class NetworkFlow(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     source_ip = models.GenericIPAddressField()
@@ -28,6 +29,7 @@ class NetworkFlow(models.Model):
     def __str__(self):
         return f"{self.source_ip}:{self.source_port} → {self.destination_ip}:{self.destination_port} ({self.protocol})"
 
+
 class DetectionRule(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
@@ -46,27 +48,35 @@ class DetectionRule(models.Model):
     def __str__(self):
         return f"{self.name} ({self.get_rule_type_display()})"
 
+
 class Alert(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     flow = models.ForeignKey(NetworkFlow, on_delete=models.CASCADE, related_name='alerts')
     rule = models.ForeignKey(DetectionRule, on_delete=models.SET_NULL, null=True, related_name='alerts')
-    STATUS_CHOICES = (('NEW', 'New'), ('INVESTIGATING', 'Under Investigation'), ('RESOLVED', 'Resolved'), ('FALSE_POSITIVE', 'False Positive'))
+    STATUS_CHOICES = (('NEW', 'New'), ('INVESTIGATING', 'Under Investigation'), ('RESOLVED', 'Resolved'),
+                      ('FALSE_POSITIVE', 'False Positive'))
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='NEW')
     timestamp = models.DateTimeField(default=timezone.now)
     confidence = models.FloatField(default=1.0, help_text="Confidence score (0-1)")
     details = models.TextField(null=True, blank=True, help_text="Additional alert details")
-    ATTACK_CATEGORIES = (('RECON', 'Reconnaissance'), ('DOS', 'Denial of Service'), ('U2R', 'User to Root'), ('R2L', 'Remote to Local'), ('PROBE', 'Probing'), ('BACKDOOR', 'Backdoor'), ('SHELLCODE', 'Shellcode'), ('WORM', 'Worm'), ('GENERIC', 'Generic'), ('ANALYSIS', 'Analysis'), ('FUZZERS', 'Fuzzers'), ('EXPLOIT', 'Exploit'), ('OTHER', 'Other'))
+    ATTACK_CATEGORIES = (
+    ('RECON', 'Reconnaissance'), ('DOS', 'Denial of Service'), ('U2R', 'User to Root'), ('R2L', 'Remote to Local'),
+    ('PROBE', 'Probing'), ('BACKDOOR', 'Backdoor'), ('SHELLCODE', 'Shellcode'), ('WORM', 'Worm'),
+    ('GENERIC', 'Generic'), ('ANALYSIS', 'Analysis'), ('FUZZERS', 'Fuzzers'), ('EXPLOIT', 'Exploit'),
+    ('OTHER', 'Other'))
     attack_category = models.CharField(max_length=20, choices=ATTACK_CATEGORIES, null=True, blank=True)
     attack_subcategory = models.CharField(max_length=100, null=True, blank=True)
 
     def __str__(self):
         return f"Alert: {self.rule.name if self.rule else 'Unknown'} at {self.timestamp}"
 
+
 class MLModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
     description = models.TextField()
-    MODEL_TYPES = (('CLASSIFIER', 'Classifier'), ('ANOMALY', 'Anomaly Detector'), ('ENSEMBLE', 'Ensemble Model'), ('HIERARCHICAL', 'Hierarchical Model'))
+    MODEL_TYPES = (('CLASSIFIER', 'Classifier'), ('ANOMALY', 'Anomaly Detector'), ('ENSEMBLE', 'Ensemble Model'),
+                   ('HIERARCHICAL', 'Hierarchical Model'))
     model_type = models.CharField(max_length=20, choices=MODEL_TYPES)
     model_path = models.CharField(max_length=255)
     parameters = models.TextField(help_text="JSON representation of model parameters")
@@ -82,6 +92,7 @@ class MLModel(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_model_type_display()})"
+
 
 class TrainingJob(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -108,6 +119,7 @@ class TrainingJob(models.Model):
     def __str__(self):
         return f"Training job for {self.model.name} - {self.get_status_display()}"
 
+
 class HierarchicalModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=200)
@@ -123,6 +135,7 @@ class HierarchicalModel(models.Model):
 
     def __str__(self):
         return f"Hierarchical Model: {self.name}"
+
 
 class NetworkInterface(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
