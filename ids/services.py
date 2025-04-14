@@ -1,135 +1,146 @@
 # services.py
-import numpy as np
 import json
 import logging
-from datetime import datetime
+
+import numpy as np
 from django.utils import timezone
+from scapy.layers.inet import IP
+
 from .models import NetworkFlow, Alert, DetectionRule, MLModel, HierarchicalModel
 
 logger = logging.getLogger(__name__)
 
 
 class PacketProcessor:
-    """Service for processing incoming network packets and creating flow data"""
-
-    def __init__(self):
-        self.active_flows = {}  # Store active flows by key
-
+    # services.py (update process_packet method in PacketProcessor)
     def process_packet(self, packet_data):
-        """Process a raw network packet and update flow information"""
-        # Extract key fields from packet
         try:
-            src_ip = packet_data.get('src_ip')
-            dst_ip = packet_data.get('dst_ip')
-            src_port = packet_data.get('src_port')
-            dst_port = packet_data.get('dst_port')
-            protocol = packet_data.get('protocol', 'unknown')
-            packet_size = packet_data.get('size', 0)
-            timestamp = packet_data.get('timestamp', timezone.now())
-
-            # Create a flow key (bidirectional)
-            if src_ip < dst_ip or (src_ip == dst_ip and src_port < dst_port):
-                flow_key = f"{src_ip}:{src_port}-{dst_ip}:{dst_port}-{protocol}"
-                direction = 'forward'
+            # Handle hex-encoded packet data from the API
+            if isinstance(packet_data, dict) and 'raw_packet' in packet_data:
+                # Decode hex string to bytes
+                raw_packet = bytes.fromhex(packet_data['raw_packet'])
             else:
-                flow_key = f"{dst_ip}:{dst_port}-{src_ip}:{src_port}-{protocol}"
-                direction = 'backward'
+                raw_packet = packet_data
 
-            # Update or create flow
-            if flow_key in self.active_flows:
-                flow = self.active_flows[flow_key]
-                flow['packet_count'] += 1
-                flow['byte_count'] += packet_size
-                flow['last_seen'] = timestamp
-                flow['packets'].append(packet_data)
+            packet = IP(raw_packet)
 
-                # Update direction-specific counts
-                if direction == 'forward':
-                    flow['fwd_packet_count'] += 1
-                    flow['fwd_byte_count'] += packet_size
-                else:
-                    flow['bwd_packet_count'] += 1
-                    flow['bwd_byte_count'] += packet_size
-            else:
-                # Create new flow
-                flow = {
-                    'src_ip': src_ip,
-                    'dst_ip': dst_ip,
-                    'src_port': src_port,
-                    'dst_port': dst_port,
-                    'protocol': protocol,
-                    'start_time': timestamp,
-                    'last_seen': timestamp,
+            # Extract basic packet information
+            src_ip = packet[IP].src
+            dst_ip = packet[IP].dst
+            protocol = packet[IP].proto
+
+            # Extract ports (if TCP or UDP)
+            src_port = dst_port = 0
+            if protocol == 6 and packet.haslayer(TCP):
+                src_port = packet[TCP].sport
+                dst_port = packet[TCP].dport
+            elif protocol == 17 and packet.haslayer(UDP):
+                src_port = packet[UDP].sport
+                dst_port = packet[UDP].dport
+
+            # Create or update a NetworkFlow object
+            flow_key = f"{src_ip}:{src_port}-{dst_ip}:{dst_port}-{protocol}"
+            flow, created = NetworkFlow.objects.get_or_create(
+                source_ip=src_ip,
+                destination_ip=dst_ip,
+                source_port=src_port,
+                destination_port=dst_port,
+                protocol=self.protocol_to_string(protocol),
+                defaults={
                     'packet_count': 1,
-                    'byte_count': packet_size,
-                    'fwd_packet_count': 1 if direction == 'forward' else 0,
-                    'fwd_byte_count': packet_size if direction == 'forward' else 0,
-                    'bwd_packet_count': 1 if direction == 'backward' else 0,
-                    'bwd_byte_count': packet_size if direction == 'backward' else 0,
-                    'packets': [packet_data]
+                    'byte_count': len(packet),
+                    'duration': 0.0,
+                    'packet_data': json.dumps(packet.summary())
                 }
-                self.active_flows[flow_key] = flow
-
-            # Check for flow timeout to save completed flows
-            self._check_flow_timeouts()
-
-            return flow_key
-
-        except Exception as e:
-            logger.error(f"Error processing packet: {str(e)}")
-            return None
-
-    def _check_flow_timeouts(self, timeout_seconds=120):
-        """Check for flow timeouts and save completed flows"""
-        current_time = timezone.now()
-        timeout_flows = []
-
-        for flow_key, flow in self.active_flows.items():
-            last_seen = flow['last_seen']
-            if (current_time - last_seen).total_seconds() > timeout_seconds:
-                timeout_flows.append(flow_key)
-
-        # Save and remove timed out flows
-        for flow_key in timeout_flows:
-            flow = self.active_flows.pop(flow_key)
-            self._save_flow(flow)
-
-    def _save_flow(self, flow):
-        """Save a flow to the database"""
-        try:
-            duration = (flow['last_seen'] - flow['start_time']).total_seconds()
-            avg_packet_size = flow['byte_count'] / flow['packet_count'] if flow['packet_count'] > 0 else 0
-            flow_rate = flow['packet_count'] / duration if duration > 0 else 0
-            byte_rate = flow['byte_count'] / duration if duration > 0 else 0
-
-            # Keep just the first 10 packets to avoid excessive storage
-            packet_data = json.dumps(flow['packets'][:10]) if flow['packets'] else None
-
-            network_flow = NetworkFlow(
-                source_ip=flow['src_ip'],
-                destination_ip=flow['dst_ip'],
-                source_port=flow['src_port'],
-                destination_port=flow['dst_port'],
-                protocol=flow['protocol'],
-                packet_count=flow['packet_count'],
-                byte_count=flow['byte_count'],
-                timestamp=flow['start_time'],
-                duration=duration,
-                avg_packet_size=avg_packet_size,
-                flow_rate=flow_rate,
-                byte_rate=byte_rate,
-                packet_data=packet_data
             )
-            network_flow.save()
 
-            # Run flow through detection pipeline
-            DetectionService().analyze_flow(network_flow)
+            if not created:
+                # Update existing flow
+                flow.packet_count += 1
+                flow.byte_count += len(packet)
+                flow.duration = (timezone.now() - flow.timestamp).total_seconds()
+                flow.flow_rate = flow.packet_count / max(flow.duration, 1)
+                flow.byte_rate = flow.byte_count / max(flow.duration, 1)
+                flow.avg_packet_size = flow.byte_count / flow.packet_count
+                flow.save()
 
-            return network_flow.id
+            return flow
 
         except Exception as e:
-            logger.error(f"Error saving flow: {str(e)}")
+            print(f"Error processing packet: {e}")
             return None
+
+    def protocol_to_string(self, proto_num):
+        """Convert protocol number to string."""
+        proto_map = {1: 'ICMP', 6: 'TCP', 17: 'UDP'}
+        return proto_map.get(proto_num, 'OTHER')
+
+class DetectionService:
+    def detect(self, flow):
+        """
+        Analyze a NetworkFlow object and detect potential cyberattacks.
+        Returns: List of Alert objects if attacks are detected, empty list otherwise.
+        """
+        alerts = []
+
+        # Rule-based detection
+        alerts.extend(self.detect_with_rules(flow))
+
+        # ML-based detection (placeholder for now)
+        alerts.extend(self.detect_with_ml(flow))
+
+        return alerts
+
+    def detect_with_rules(self, flow):
+        """Detect attacks using signature-based rules."""
+        alerts = []
+        rules = DetectionRule.objects.filter(enabled=True)
+
+        for rule in rules:
+            rule_details = json.loads(rule.rule_details) if rule.rule_details else {}
+
+            # Example Rule 1: Detect high packet rate (possible DoS)
+            if rule.name == "High Packet Rate (DoS)":
+                threshold = rule_details.get('packet_rate_threshold', 100)  # Packets per second
+                if flow.flow_rate and flow.flow_rate > threshold:
+                    alert = Alert(
+                        flow=flow,
+                        rule=rule,
+                        status='NEW',
+                        confidence=0.9,
+                        details=f"High packet rate detected: {flow.flow_rate} packets/sec",
+                        attack_category='DOS',
+                        attack_subcategory='Flooding'
+                    )
+                    alerts.append(alert)
+
+            # Example Rule 2: Detect port scanning (reconnaissance)
+            if rule.name == "Port Scan Detection":
+                # Check for flows from the same source IP to multiple destination ports
+                recent_flows = NetworkFlow.objects.filter(
+                    source_ip=flow.source_ip,
+                    timestamp__gte=flow.timestamp - timezone.timedelta(minutes=5)
+                )
+                unique_dst_ports = recent_flows.values('destination_port').distinct().count()
+                port_threshold = rule_details.get('port_threshold', 10)
+                if unique_dst_ports > port_threshold:
+                    alert = Alert(
+                        flow=flow,
+                        rule=rule,
+                        status='NEW',
+                        confidence=0.85,
+                        details=f"Port scanning detected: {unique_dst_ports} unique ports in 5 minutes",
+                        attack_category='RECON',
+                        attack_subcategory='Port Scan'
+                    )
+                    alerts.append(alert)
+
+        return alerts
+
+    def detect_with_ml(self, flow):
+        """Placeholder for ML-based anomaly detection."""
+        # TODO: Integrate MLModel or HierarchicalModel for anomaly detection
+        return []
 
 
 class FeatureExtractor:

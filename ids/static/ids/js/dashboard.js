@@ -3,27 +3,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const alertsTable = document.getElementById('alertsTable');
 
     // Load recent alerts
+    // static/ids/js/dashboard.js
     function loadRecentAlerts() {
         fetch('/api/alerts/?limit=10')
             .then(response => response.json())
             .then(data => {
+                const alertsTable = document.getElementById('alertsTable');
                 alertsTable.innerHTML = '';
+
                 data.results.forEach(alert => {
                     const row = document.createElement('tr');
                     row.classList.add(getStatusClass(alert.status));
+
+                    // Get severity from the related rule (if any)
+                    const severity = alert.rule ? alert.rule.severity : 1;
+
+                    // Highlight high-severity alerts (severity >= 4)
+                    if (severity >= 4) {
+                        row.classList.add('table-danger');
+                    }
+
+                    const alertDate = new Date(alert.timestamp);
+                    const formattedDate = alertDate.toLocaleString();
+
                     row.innerHTML = `
-                        <td>${new Date(alert.timestamp).toLocaleString()}</td>
+                        <td>${formattedDate}</td>
                         <td>${alert.flow.source_ip}</td>
                         <td>${alert.flow.destination_ip}</td>
                         <td>${alert.attack_category || 'Unknown'}</td>
                         <td>${alert.rule ? alert.rule.name : 'ML Detection'}</td>
                         <td>${(alert.confidence * 100).toFixed(1)}%</td>
                         <td>${alert.status}</td>
+                        <td>${severity}</td>
                     `;
+
                     alertsTable.appendChild(row);
                 });
             })
-            .catch(error => console.error('Error loading alerts:', error));
+            .catch(error => {
+                console.error('Error loading alerts:', error);
+            });
     }
 
     function getStatusClass(status) {

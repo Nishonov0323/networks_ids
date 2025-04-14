@@ -1,26 +1,29 @@
 # views.py
-from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, action
-from rest_framework.response import Response
-from django.shortcuts import render
-from django.db.models import Count, Q
-from django.db.models.functions import TruncHour  # Added this line
-from django.utils import timezone
-from datetime import timedelta
 import json
+from datetime import timedelta
 
+from django.db.models import Count
+from django.db.models.functions import TruncHour  # Added this line
+from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from rest_framework import status
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
 from .models import (
     NetworkFlow, Alert, DetectionRule, MLModel,
     HierarchicalModel, TrainingJob, NetworkInterface
 )
-from .services import PacketProcessor, DetectionService
 from .serializers import (
     NetworkFlowSerializer, AlertSerializer, DetectionRuleSerializer,
     MLModelSerializer, HierarchicalModelSerializer, TrainingJobSerializer,
     NetworkInterfaceSerializer
 )
+from .services import PacketProcessor, DetectionService
 
 
 # Main dashboard view
@@ -185,33 +188,33 @@ class DetectionRuleViewSet(viewsets.ModelViewSet):
         return Response({'enabled': rule.enabled})
 
 
+# ids/views.py (ensure this is in MLModelViewSet)
 class MLModelViewSet(viewsets.ModelViewSet):
-    """ViewSet for MLModel model"""
     queryset = MLModel.objects.all().order_by('name')
     serializer_class = MLModelSerializer
 
     def get_queryset(self):
-        """Filter queryset based on query parameters"""
         queryset = MLModel.objects.all().order_by('name')
-
-        # Apply filters if provided
         model_type = self.request.query_params.get('model_type', None)
         if model_type:
             queryset = queryset.filter(model_type=model_type)
-
-        # Filter by performance metrics
         min_accuracy = self.request.query_params.get('min_accuracy', None)
         if min_accuracy:
             queryset = queryset.filter(accuracy__gte=float(min_accuracy))
-
         return queryset
 
     @action(detail=True, methods=['post'])
-    def start_training(self, request, pk=None):
-        """API endpoint to start model training"""
-        ml_model = self.get_object()
+    @csrf_exempt
+    def toggle_enabled(self, request, pk=None):
+        model = self.get_object()
+        model.enabled = not model.enabled
+        model.save()
+        return Response({'enabled': model.enabled})
 
-        # Create a new training job
+    @action(detail=True, methods=['post'])
+    @csrf_exempt
+    def start_training(self, request, pk=None):
+        ml_model = self.get_object()
         training_job = TrainingJob(
             model=ml_model,
             status='PENDING',
@@ -219,10 +222,6 @@ class MLModelViewSet(viewsets.ModelViewSet):
             training_parameters=json.dumps(request.data.get('training_parameters', {}))
         )
         training_job.save()
-
-        # In a real implementation, you would start a background task
-        # to handle the actual training process
-
         return Response({
             'job_id': training_job.id,
             'status': 'Training job created'
@@ -281,14 +280,31 @@ class NetworkInterfaceViewSet(viewsets.ModelViewSet):
 
 
 # API view for packet ingestion
+# ids/views.py
+
 @api_view(['POST'])
 @csrf_exempt
+@authentication_classes([])  # Disable authentication
+@permission_classes([AllowAny])  # Allow any user (authenticated or not)
 def ingest_packet(request):
     packet_data = request.data
     processor = PacketProcessor()
-    flow_key = processor.process_packet(packet_data)
-    if flow_key:
-        return Response({'status': 'Packet processed', 'flow_key': flow_key})
+    flow = processor.process_packet(packet_data)
+
+    if flow:
+        # Perform detection
+        detector = DetectionService()
+        alerts = detector.detect(flow)
+
+        # Save any generated alerts
+        for alert in alerts:
+            alert.save()
+
+        return Response({
+            'status': 'Packet processed',
+            'flow_key': f"{flow.source_ip}:{flow.source_port}-{flow.destination_ip}:{flow.destination_port}",
+            'alerts_generated': len(alerts)
+        })
     else:
         return Response(
             {'error': 'Failed to process packet'},
@@ -369,9 +385,11 @@ def alerts_page(request):
     }
     return render(request, 'ids/alerts.html', context)
 
+
 # Add these new views
 def rules_page(request):
     return render(request, 'ids/rules.html')
+
 
 def models_page(request):
     return render(request, 'ids/models.html')
