@@ -1,130 +1,41 @@
-// static/ids/js/dashboard.js
+// ids/static/ids/js/dashboard.js
 document.addEventListener('DOMContentLoaded', () => {
-    const alertsTable = document.getElementById('alertsTable');
+    let latestTimestamp = '';
 
-    // Load recent alerts
-    // static/ids/js/dashboard.js
-    function loadRecentAlerts() {
-        fetch('/api/alerts/?limit=10')
+    // Function to format a date to YYYY-MM-DD HH:MM:SS
+    function formatDateToISO(date) {
+        const pad = (num) => String(num).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    function fetchNewFlows() {
+        // If latestTimestamp exists, convert it to ISO format
+        const timestampParam = latestTimestamp ? formatDateToISO(new Date(latestTimestamp)) : '';
+        fetch(`/api/new-flows/?latest_timestamp=${encodeURIComponent(timestampParam)}`)
             .then(response => response.json())
             .then(data => {
-                const alertsTable = document.getElementById('alertsTable');
-                alertsTable.innerHTML = '';
-
-                data.results.forEach(alert => {
+                const flowsBody = document.getElementById('flows-body');
+                data.flows.forEach(flow => {
                     const row = document.createElement('tr');
-                    row.classList.add(getStatusClass(alert.status));
-
-                    // Get severity from the related rule (if any)
-                    const severity = alert.rule ? alert.rule.severity : 1;
-
-                    // Highlight high-severity alerts (severity >= 4)
-                    if (severity >= 4) {
-                        row.classList.add('table-danger');
-                    }
-
-                    const alertDate = new Date(alert.timestamp);
-                    const formattedDate = alertDate.toLocaleString();
-
                     row.innerHTML = `
-                        <td>${formattedDate}</td>
-                        <td>${alert.flow.source_ip}</td>
-                        <td>${alert.flow.destination_ip}</td>
-                        <td>${alert.attack_category || 'Unknown'}</td>
-                        <td>${alert.rule ? alert.rule.name : 'ML Detection'}</td>
-                        <td>${(alert.confidence * 100).toFixed(1)}%</td>
-                        <td>${alert.status}</td>
-                        <td>${severity}</td>
+                        <td>${flow.timestamp}</td>
+                        <td>${flow.protocol}</td>
+                        <td>${flow.flow_duration}</td>
+                        <td>${flow.total_fwd_packets}</td>
+                        <td>${flow.prediction}</td>
                     `;
-
-                    alertsTable.appendChild(row);
+                    flowsBody.insertBefore(row, flowsBody.firstChild);
+                    if (!latestTimestamp || new Date(flow.timestamp) > new Date(latestTimestamp)) {
+                        latestTimestamp = flow.timestamp;
+                    }
                 });
             })
-            .catch(error => {
-                console.error('Error loading alerts:', error);
-            });
+            .catch(error => console.error('Error fetching new flows:', error));
     }
 
-    function getStatusClass(status) {
-        switch (status) {
-            case 'NEW': return 'table-danger';
-            case 'INVESTIGATING': return 'table-warning';
-            case 'RESOLVED': return 'table-success';
-            case 'FALSE_POSITIVE': return 'table-secondary';
-            default: return '';
-        }
-    }
+    // Fetch new flows every 5 seconds
+    setInterval(fetchNewFlows, 5000);
 
-    // Update charts with real data
-    function updateCharts() {
-        fetch('/api/statistics/')
-            .then(response => response.json())
-            .then(data => {
-                // Update Category Chart
-                const categoryData = {
-                    labels: data.categories.map(cat => cat.attack_category),
-                    datasets: [{
-                        label: 'Alerts by Category',
-                        data: data.categories.map(cat => cat.count),
-                        backgroundColor: [
-                            'rgba(255, 99, 132, 0.6)',
-                            'rgba(54, 162, 235, 0.6)',
-                            'rgba(255, 206, 86, 0.6)',
-                            'rgba(75, 192, 192, 0.6)',
-                            'rgba(153, 102, 255, 0.6)',
-                            'rgba(255, 159, 64, 0.6)',
-                        ],
-                    }],
-                };
-
-                const categoriesChart = new Chart(document.getElementById('categoriesChart'), {
-                    type: 'pie',
-                    data: categoryData,
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { position: 'right' },
-                            title: { display: true, text: 'Alerts by Attack Category' },
-                        },
-                    },
-                });
-
-                // Update Timeline Chart
-                const timelineData = {
-                    labels: data.timeline.map(t => new Date(t.timestamp).toLocaleTimeString()),
-                    datasets: [{
-                        label: 'Alerts',
-                        data: data.timeline.map(t => t.count),
-                        fill: false,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1,
-                    }],
-                };
-
-                const timelineChart = new Chart(document.getElementById('timelineChart'), {
-                    type: 'line',
-                    data: timelineData,
-                    options: {
-                        responsive: true,
-                        scales: {
-                            y: { beginAtZero: true, title: { display: true, text: 'Number of Alerts' } },
-                            x: { title: { display: true, text: 'Time of Day' } },
-                        },
-                        plugins: {
-                            title: { display: true, text: 'Alert Timeline (Last 24 Hours)' },
-                        },
-                    },
-                });
-            })
-            .catch(error => console.error('Error loading stats:', error));
-    }
-
-    loadRecentAlerts();
-    updateCharts();
-
-    // Refresh data periodically
-    setInterval(() => {
-        loadRecentAlerts();
-        updateCharts();
-    }, 30000); // Refresh every 30 seconds
+    // Initial fetch
+    fetchNewFlows();
 });

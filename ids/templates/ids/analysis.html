@@ -1,0 +1,101 @@
+<!-- ids/templates/ids/analysis.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analysis</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'ids/css/styles.css' %}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <h2>IDS</h2>
+        <a href="{% url 'dashboard' %}">Dashboard</a>
+        <a href="{% url 'flows' %}">Flows</a>
+        <a href="{% url 'analysis' %}" class="active">Analysis</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <header>
+            <h1>Analysis</h1>
+        </header>
+
+        <div class="card">
+            <h3>Upload CSV File for Analysis</h3>
+            <form method="post" enctype="multipart/form-data" id="uploadForm">
+                {% csrf_token %}
+                <input type="file" name="csv_file" accept=".csv" required>
+                <button type="submit">Analyze</button>
+            </form>
+            <div id="loading" style="display: none;">Processing...</div>
+        </div>
+
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+
+        {% if benign_count is not None %}
+            <!-- Summary Statistics -->
+            <div class="card analysis-results">
+                <h3>Summary Statistics</h3>
+                <p><strong>Total Predictions:</strong> {{ total_predictions }}</p>
+                <p><strong>Benign:</strong> {{ benign_count }} ({{ benign_percentage }}%)</p>
+                <h4>Other Categories:</h4>
+                <ul>
+                    {% for label, count in other_counts.items %}
+                        <li class="{% if label == 'Unknown' %}unknown{% endif %}">
+                            {{ label }}: {{ count }} ({{ other_percentages.label }}%)
+                        </li>
+                    {% empty %}
+                        <li>No other categories detected.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <!-- Top Attack Types -->
+            <div class="card">
+                <h3>Top 3 Attack Types</h3>
+                {% if top_attacks %}
+                    <ul>
+                        {% for label, count in top_attacks %}
+                            <li>{{ label }}: {{ count }} ({{ other_percentages.label }}%)</li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>No attack types detected.</p>
+                {% endif %}
+            </div>
+
+            <!-- Visualizations -->
+            <div class="card">
+                <h3>Prediction Distribution</h3>
+                <div class="chart-toggle">
+                    <button class="toggle-btn active" data-chart="donut">Donut Chart</button>
+                    <button class="toggle-btn" data-chart="bar">Bar Chart</button>
+                </div>
+                <canvas id="donutChart" class="chart-canvas"></canvas>
+                <canvas id="barChart" class="chart-canvas" style="display: none;"></canvas>
+                <script>
+                    const benignCount = {{ benign_count|default:0 }};
+                    const otherCounts = {{ other_counts|default:"{}"|safe }};
+                </script>
+            </div>
+
+            <!-- Download Report -->
+            <div class="card">
+                <h3>Download Report</h3>
+                <form method="post" action="{% url 'download_analysis' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="download-btn">Download as CSV</button>
+                </form>
+            </div>
+        {% endif %}
+    </div>
+
+    <script src="{% static 'ids/js/analysis.js' %}"></script>
+</body>
+</html>

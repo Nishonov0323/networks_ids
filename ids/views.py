@@ -1,414 +1,167 @@
-# views.py
-import json
-from datetime import timedelta
-
-from django.db.models import Count
-from django.db.models.functions import TruncHour  # Added this line
+# ids/views.py
 from django.shortcuts import render
-from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework import status
-from rest_framework import viewsets
-from rest_framework.decorators import action
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-
-from .models import (
-    NetworkFlow, Alert, DetectionRule, MLModel,
-    HierarchicalModel, TrainingJob, NetworkInterface
-)
-from .serializers import (
-    NetworkFlowSerializer, AlertSerializer, DetectionRuleSerializer,
-    MLModelSerializer, HierarchicalModelSerializer, TrainingJobSerializer,
-    NetworkInterfaceSerializer
-)
-from .services import PacketProcessor, DetectionService
+from django.http import JsonResponse, HttpResponse
+from django.core.files.storage import FileSystemStorage
+import pandas as pd
+import joblib
+from django.conf import settings
+from .models import NetworkFlow
+from datetime import datetime
 
 
-# Main dashboard view
 def dashboard(request):
-    """Main dashboard view for the IDS"""
-    # Get statistics for display
-    total_flows = NetworkFlow.objects.count()
-    total_alerts = Alert.objects.count()
-
-    # Get alerts from the last 24 hours
-    one_day_ago = timezone.now() - timedelta(days=1)
-    recent_alerts = Alert.objects.filter(timestamp__gte=one_day_ago).count()
-
-    # Get category distribution
-    categories = Alert.objects.values('attack_category').annotate(
-        count=Count('id')
-    ).order_by('-count')
-
-    # Get active interfaces
-    active_interfaces = NetworkInterface.objects.filter(is_monitoring=True).count()
-
-    context = {
-        'total_flows': total_flows,
-        'total_alerts': total_alerts,
-        'recent_alerts': recent_alerts,
-        'categories': categories,
-        'active_interfaces': active_interfaces,
-    }
-
+    flows = NetworkFlow.objects.all().order_by('-timestamp')[:10]
+    context = {'flows': flows}
     return render(request, 'ids/dashboard.html', context)
 
 
-# API Views using DRF ViewSets
-# views.py (continued)
-class NetworkFlowViewSet(viewsets.ModelViewSet):
-    queryset = NetworkFlow.objects.all().order_by('-timestamp')
-    serializer_class = NetworkFlowSerializer
-
-    def get_queryset(self):
-        queryset = NetworkFlow.objects.all().order_by('-timestamp')
-
-        source_ip = self.request.query_params.get('source_ip', None)
-        if source_ip:
-            queryset = queryset.filter(source_ip=source_ip)
-
-        destination_ip = self.request.query_params.get('destination_ip', None)
-        if destination_ip:
-            queryset = queryset.filter(destination_ip=destination_ip)
-
-        protocol = self.request.query_params.get('protocol', None)
-        if protocol:
-            queryset = queryset.filter(protocol=protocol)
-
-        # Filter by alert count
-        alert_count_gt = self.request.query_params.get('alert_count__gt', None)
-        alert_count_eq = self.request.query_params.get('alert_count', None)
-        if alert_count_gt is not None:
-            queryset = queryset.annotate(alert_count=Count('alerts')).filter(alert_count__gt=int(alert_count_gt))
-        if alert_count_eq is not None:
-            queryset = queryset.annotate(alert_count=Count('alerts')).filter(alert_count=int(alert_count_eq))
-
-        start_time = self.request.query_params.get('start_time', None)
-        if start_time:
-            queryset = queryset.filter(timestamp__gte=start_time)
-
-        end_time = self.request.query_params.get('end_time', None)
-        if end_time:
-            queryset = queryset.filter(timestamp__lte=end_time)
-
-        return queryset
-
-
-class AlertViewSet(viewsets.ModelViewSet):
-    """ViewSet for Alert model"""
-    queryset = Alert.objects.all().order_by('-timestamp')
-    serializer_class = AlertSerializer
-
-    def get_queryset(self):
-        """Filter queryset based on query parameters"""
-        queryset = Alert.objects.all().order_by('-timestamp')
-
-        # Apply filters if provided
-        status = self.request.query_params.get('status', None)
-        if status:
-            queryset = queryset.filter(status=status)
-
-        category = self.request.query_params.get('attack_category', None)
-        if category:
-            queryset = queryset.filter(attack_category=category)
-
-        # Filter by confidence threshold
-        min_confidence = self.request.query_params.get('min_confidence', None)
-        if min_confidence:
-            queryset = queryset.filter(confidence__gte=float(min_confidence))
-
-        # Time range filter
-        start_time = self.request.query_params.get('start_time', None)
-        if start_time:
-            queryset = queryset.filter(timestamp__gte=start_time)
-
-        end_time = self.request.query_params.get('end_time', None)
-        if end_time:
-            queryset = queryset.filter(timestamp__lte=end_time)
-
-        # Filter by related flow
-        flow_id = self.request.query_params.get('flow_id', None)
-        if flow_id:
-            queryset = queryset.filter(flow_id=flow_id)
-
-        return queryset
-
-    @action(detail=True, methods=['post'])
-    def update_status(self, request, pk=None):
-        """API endpoint to update alert status"""
-        alert = self.get_object()
-        status = request.data.get('status')
-
-        if status not in [choice[0] for choice in Alert.STATUS_CHOICES]:
-            return Response(
-                {'error': 'Invalid status value'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        alert.status = status
-        alert.save()
-
-        return Response({'status': 'Alert status updated'})
-
-
-class DetectionRuleViewSet(viewsets.ModelViewSet):
-    """ViewSet for DetectionRule model"""
-    queryset = DetectionRule.objects.all().order_by('name')
-    serializer_class = DetectionRuleSerializer
-
-    def get_queryset(self):
-        """Filter queryset based on query parameters"""
-        queryset = DetectionRule.objects.all().order_by('name')
-
-        # Apply filters if provided
-        rule_type = self.request.query_params.get('rule_type', None)
-        if rule_type:
-            queryset = queryset.filter(rule_type=rule_type)
-
-        enabled = self.request.query_params.get('enabled', None)
-        if enabled is not None:
-            queryset = queryset.filter(enabled=(enabled.lower() == 'true'))
-
-        # Filter by severity level
-        min_severity = self.request.query_params.get('min_severity', None)
-        if min_severity:
-            queryset = queryset.filter(severity__gte=int(min_severity))
-
-        return queryset
-
-    @action(detail=True, methods=['post'])
-    def toggle_enabled(self, request, pk=None):
-        """API endpoint to toggle rule enabled status"""
-        rule = self.get_object()
-        rule.enabled = not rule.enabled
-        rule.save()
-
-        return Response({'enabled': rule.enabled})
-
-
-# ids/views.py (ensure this is in MLModelViewSet)
-class MLModelViewSet(viewsets.ModelViewSet):
-    queryset = MLModel.objects.all().order_by('name')
-    serializer_class = MLModelSerializer
-
-    def get_queryset(self):
-        queryset = MLModel.objects.all().order_by('name')
-        model_type = self.request.query_params.get('model_type', None)
-        if model_type:
-            queryset = queryset.filter(model_type=model_type)
-        min_accuracy = self.request.query_params.get('min_accuracy', None)
-        if min_accuracy:
-            queryset = queryset.filter(accuracy__gte=float(min_accuracy))
-        return queryset
-
-    @action(detail=True, methods=['post'])
-    @csrf_exempt
-    def toggle_enabled(self, request, pk=None):
-        model = self.get_object()
-        model.enabled = not model.enabled
-        model.save()
-        return Response({'enabled': model.enabled})
-
-    @action(detail=True, methods=['post'])
-    @csrf_exempt
-    def start_training(self, request, pk=None):
-        ml_model = self.get_object()
-        training_job = TrainingJob(
-            model=ml_model,
-            status='PENDING',
-            dataset_info=json.dumps(request.data.get('dataset_info', {})),
-            training_parameters=json.dumps(request.data.get('training_parameters', {}))
-        )
-        training_job.save()
-        return Response({
-            'job_id': training_job.id,
-            'status': 'Training job created'
-        })
-
-
-class HierarchicalModelViewSet(viewsets.ModelViewSet):
-    """ViewSet for HierarchicalModel model"""
-    queryset = HierarchicalModel.objects.all().order_by('name')
-    serializer_class = HierarchicalModelSerializer
-
-    @action(detail=True, methods=['post'])
-    def toggle_enabled(self, request, pk=None):
-        """API endpoint to toggle hierarchical model enabled status"""
-        model = self.get_object()
-        model.enabled = not model.enabled
-        model.save()
-
-        return Response({'enabled': model.enabled})
-
-
-class TrainingJobViewSet(viewsets.ModelViewSet):
-    """ViewSet for TrainingJob model"""
-    queryset = TrainingJob.objects.all().order_by('-start_time')
-    serializer_class = TrainingJobSerializer
-
-    def get_queryset(self):
-        """Filter queryset based on query parameters"""
-        queryset = TrainingJob.objects.all().order_by('-start_time')
-
-        # Apply filters if provided
-        status = self.request.query_params.get('status', None)
-        if status:
-            queryset = queryset.filter(status=status)
-
-        # Filter by model
-        model_id = self.request.query_params.get('model_id', None)
-        if model_id:
-            queryset = queryset.filter(model_id=model_id)
-
-        return queryset
-
-
-# Similarly for the action in NetworkInterfaceViewSet
-class NetworkInterfaceViewSet(viewsets.ModelViewSet):
-    queryset = NetworkInterface.objects.all().order_by('name')
-    serializer_class = NetworkInterfaceSerializer
-
-    @action(detail=True, methods=['post'])
-    @csrf_exempt
-    def toggle_monitoring(self, request, pk=None):
-        interface = self.get_object()
-        interface.is_monitoring = not interface.is_monitoring
-        interface.save()
-        return Response({'is_monitoring': interface.is_monitoring})
-
-
-# API view for packet ingestion
-# ids/views.py
-
-@api_view(['POST'])
-@csrf_exempt
-@authentication_classes([])  # Disable authentication
-@permission_classes([AllowAny])  # Allow any user (authenticated or not)
-def ingest_packet(request):
-    packet_data = request.data
-    processor = PacketProcessor()
-    flow = processor.process_packet(packet_data)
-
-    if flow:
-        # Perform detection
-        detector = DetectionService()
-        alerts = detector.detect(flow)
-
-        # Save any generated alerts
-        for alert in alerts:
-            alert.save()
-
-        return Response({
-            'status': 'Packet processed',
-            'flow_key': f"{flow.source_ip}:{flow.source_port}-{flow.destination_ip}:{flow.destination_port}",
-            'alerts_generated': len(alerts)
-        })
-    else:
-        return Response(
-            {'error': 'Failed to process packet'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-
-# API view for statistics
-@api_view(['GET'])
-def get_statistics(request):
-    """API endpoint to get IDS statistics"""
-    # Time range for statistics
-    days = int(request.query_params.get('days', 7))
-    start_date = timezone.now() - timedelta(days=days)
-
-    # Get flow statistics
-    total_flows = NetworkFlow.objects.count()
-    recent_flows = NetworkFlow.objects.filter(timestamp__gte=start_date).count()
-
-    # Get alert statistics
-    total_alerts = Alert.objects.count()
-    recent_alerts = Alert.objects.filter(timestamp__gte=start_date).count()
-
-    # Get alerts by category
-    alerts_by_category = Alert.objects.filter(
-        timestamp__gte=start_date
-    ).values('attack_category').annotate(
-        count=Count('id')
-    ).order_by('-count')
-
-    # Get alerts by status
-    alerts_by_status = Alert.objects.filter(
-        timestamp__gte=start_date
-    ).values('status').annotate(
-        count=Count('id')
-    ).order_by('-count')
-
-    # Get alerts by confidence range
-    alerts_by_confidence = {
-        'high': Alert.objects.filter(confidence__gte=0.8, timestamp__gte=start_date).count(),
-        'medium': Alert.objects.filter(confidence__gte=0.5, confidence__lt=0.8, timestamp__gte=start_date).count(),
-        'low': Alert.objects.filter(confidence__lt=0.5, timestamp__gte=start_date).count(),
-    }
-
-    # Get top source IPs in alerts
-    top_source_ips = NetworkFlow.objects.filter(
-        alerts__isnull=False,
-        timestamp__gte=start_date
-    ).values('source_ip').annotate(
-        alert_count=Count('alerts')
-    ).order_by('-alert_count')[:10]
-
-    statistics = {
-        'total_flows': total_flows,
-        'recent_flows': recent_flows,
-        'total_alerts': total_alerts,
-        'recent_alerts': recent_alerts,
-        'alerts_by_category': list(alerts_by_category),
-        'alerts_by_status': list(alerts_by_status),
-        'alerts_by_confidence': alerts_by_confidence,
-        'top_source_ips': list(top_source_ips),
-    }
-
-    return Response(statistics)
-
-
-def settings_page(request):
-    return render(request, 'ids/settings.html')
-
-
-def flows_page(request):
-    return render(request, 'ids/flows.html')
-
-
-def alerts_page(request):
-    context = {
-        'attack_categories': Alert.ATTACK_CATEGORIES
-    }
-    return render(request, 'ids/alerts.html', context)
-
-
-# Add these new views
-def rules_page(request):
-    return render(request, 'ids/rules.html')
-
-
-def models_page(request):
-    return render(request, 'ids/models.html')
-
-
-@api_view(['GET'])
-def statistics(request):
-    # Categories
-    categories = Alert.objects.values('attack_category').annotate(count=Count('id'))
-
-    # Timeline (last 24 hours)
-    last_24h = timezone.now() - timedelta(hours=24)
-    timeline = Alert.objects.filter(timestamp__gte=last_24h) \
-        .annotate(hour=TruncHour('timestamp')) \
-        .values('hour') \
-        .annotate(count=Count('id')) \
-        .order_by('hour')
-
-    return Response({
-        'categories': list(categories),
-        'timeline': list(timeline),
-    })
+def flows(request):
+    flows = NetworkFlow.objects.all().order_by('-timestamp')
+    context = {'flows': flows}
+    return render(request, 'ids/flows.html', context)
+
+
+def get_new_flows(request):
+    latest_timestamp_str = request.GET.get('latest_timestamp', '')
+    print(f"Received latest_timestamp: {latest_timestamp_str}")  # Debug log
+    try:
+        # If latest_timestamp is provided, parse it into a datetime object
+        if latest_timestamp_str:
+            latest_timestamp = datetime.strptime(latest_timestamp_str, '%Y-%m-%d %H:%M:%S')
+            new_flows = NetworkFlow.objects.filter(timestamp__gt=latest_timestamp).order_by('-timestamp')
+        else:
+            new_flows = NetworkFlow.objects.all().order_by('-timestamp')[:10]
+    except ValueError as e:
+        # Handle invalid timestamp format
+        print(f"Timestamp parsing error: {str(e)}")  # Debug log
+        return JsonResponse({'error': f'Invalid timestamp format: {str(e)}. Expected format: YYYY-MM-DD HH:MM:SS'},
+                            status=400)
+
+    flows_data = [
+        {
+            'timestamp': str(flow.timestamp),
+            'protocol': flow.protocol,
+            'flow_duration': flow.flow_duration,
+            'total_fwd_packets': flow.total_fwd_packets,
+            'prediction': flow.prediction
+        }
+        for flow in new_flows
+    ]
+    return JsonResponse({'flows': flows_data})
+
+
+def download_analysis(request):
+    if request.method == 'POST':
+        # Retrieve the analysis data from the session
+        benign_count = request.session.get('benign_count', 0)
+        other_counts = request.session.get('other_counts', {})
+        total_predictions = request.session.get('total_predictions', 0)
+
+        # Prepare the data for CSV
+        data = [
+            {'Category': 'Benign', 'Count': benign_count,
+             'Percentage': (benign_count / total_predictions * 100) if total_predictions else 0}
+        ]
+        for label, count in other_counts.items():
+            percentage = (count / total_predictions * 100) if total_predictions else 0
+            data.append({'Category': label, 'Count': count, 'Percentage': percentage})
+
+        # Create a DataFrame and generate CSV
+        df = pd.DataFrame(data)
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="analysis_report.csv"'
+        df.to_csv(path_or_buf=response, index=False)
+        return response
+    return HttpResponse(status=400)
+
+
+def analysis(request):
+    if request.method == 'POST' and request.FILES.get('csv_file'):
+        # Handle file upload
+        csv_file = request.FILES['csv_file']
+        fs = FileSystemStorage()
+        filename = fs.save(csv_file.name, csv_file)
+        file_path = fs.path(filename)
+
+        # Load the CSV file
+        try:
+            test_data = pd.read_csv(file_path)
+        except Exception as e:
+            fs.delete(filename)
+            return render(request, 'ids/analysis.html', {'error': f'Error reading CSV file: {str(e)}'})
+
+        # Load the model, scaler, and label encoder
+        model = joblib.load(settings.BASE_DIR / 'ml_models/models/model.pkl')
+        scaler = joblib.load(settings.BASE_DIR / 'ml_models/models/scaler.pkl')
+        label_encoder = joblib.load(settings.BASE_DIR / 'ml_models/models/label_encoder.pkl')
+
+        # Preprocess the data
+        test_data = test_data.fillna(0)
+        X_test = scaler.transform(test_data)
+
+        # Make predictions
+        predictions = model.predict(X_test)
+        predicted_labels = label_encoder.inverse_transform(predictions)
+
+        # Define known attack categories
+        known_attacks = {
+            'Port Scan', '(D)DOS', 'Web Attack', 'Botnet',
+            'Brute Force', 'Infiltration', 'Heartbleed'
+        }
+
+        # Analyze the predictions
+        prediction_counts = pd.Series(predicted_labels).value_counts().to_dict()
+        total_predictions = len(predicted_labels)
+        benign_count = prediction_counts.get('Benign', 0)
+
+        # Separate known attacks and unknown attacks
+        known_attack_counts = {}
+        unknown_count = 0
+
+        for label, count in prediction_counts.items():
+            if label == 'Benign':
+                continue
+            if label in known_attacks:
+                known_attack_counts[label] = count
+            else:
+                unknown_count += count
+
+        # Add Unknown category if there are any unknown labels
+        other_counts = known_attack_counts
+        if unknown_count > 0:
+            other_counts['Unknown'] = unknown_count
+
+        # Calculate percentages
+        benign_percentage = (benign_count / total_predictions * 100) if total_predictions else 0
+        other_percentages = {
+            label: (count / total_predictions * 100) if total_predictions else 0
+            for label, count in other_counts.items()
+        }
+
+        # Identify top 3 attack types (excluding Benign)
+        top_attacks = sorted(
+            other_counts.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:3]
+
+        # Clean up the uploaded file
+        fs.delete(filename)
+
+        # Store data in session for download
+        request.session['benign_count'] = benign_count
+        request.session['other_counts'] = other_counts
+        request.session['total_predictions'] = total_predictions
+
+        # Pass the analysis to the template
+        context = {
+            'benign_count': benign_count,
+            'benign_percentage': round(benign_percentage, 2),
+            'other_counts': other_counts,
+            'other_percentages': {label: round(pct, 2) for label, pct in other_percentages.items()},
+            'total_predictions': total_predictions,
+            'top_attacks': top_attacks
+        }
+        return render(request, 'ids/analysis.html', context)
+
+    return render(request, 'ids/analysis.html')
