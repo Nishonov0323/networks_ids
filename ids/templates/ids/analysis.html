@@ -12,26 +12,26 @@
 <body>
     <!-- Sidebar Navigation -->
     <div class="sidebar">
-        <h2>IDS</h2>
-        <a href="{% url 'dashboard' %}">Dashboard</a>
-        <a href="{% url 'flows' %}">Flows</a>
-        <a href="{% url 'analysis' %}" class="active">Analysis</a>
+        <h2>Kiberhujumni aniqlash tizimi</h2>
+        <a href="{% url 'dashboard' %}" class="active">Bosh menu</a>
+        <a href="{% url 'flows' %}">Oqimlar</a>
+        <a href="{% url 'analysis' %}">Analiz</a>
     </div>
 
     <!-- Main Content -->
     <div class="main-content">
         <header>
-            <h1>Analysis</h1>
+            <h1>Analiz</h1>
         </header>
 
         <div class="card">
-            <h3>Upload CSV File for Analysis</h3>
+            <h3>Tahlil uchun CSV faylini yuklang</h3>
             <form method="post" enctype="multipart/form-data" id="uploadForm">
                 {% csrf_token %}
                 <input type="file" name="csv_file" accept=".csv" required>
-                <button type="submit">Analyze</button>
+                <button type="submit">Tahlil qiling</button>
             </form>
-            <div id="loading" style="display: none;">Processing...</div>
+            <div id="loading" style="display: none;">Qayta ishlanmoqda...</div>
         </div>
 
         {% if error %}
@@ -41,17 +41,17 @@
         {% if benign_count is not None %}
             <!-- Summary Statistics -->
             <div class="card analysis-results">
-                <h3>Summary Statistics</h3>
-                <p><strong>Total Predictions:</strong> {{ total_predictions }}</p>
-                <p><strong>Benign:</strong> {{ benign_count }} ({{ benign_percentage }}%)</p>
-                <h4>Other Categories:</h4>
+                <h3>Statistika xulosasi</h3>
+                <p><strong>Jami bashoratlar:</strong> {{ total_predictions }}</p>
+                <p><strong>Yaxshi:</strong> {{ benign_count }} ({{ benign_percentage }}%)</p>
+                <h4>Boshqa toifalar:</h4>
                 <ul>
                     {% for label, count in other_counts.items %}
                         <li class="{% if label == 'Unknown' %}unknown{% endif %}">
                             {{ label }}: {{ count }} ({{ other_percentages.label }}%)
                         </li>
                     {% empty %}
-                        <li>No other categories detected.</li>
+                        <li>Boshqa toifalar aniqlanmadi.</li>
                     {% endfor %}
                 </ul>
             </div>
