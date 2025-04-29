@@ -1,0 +1,294 @@
+/* ids/static/ids/css/styles.css */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #f4f6f9;
+    color: #333;
+}
+
+/* Sidebar Navigation */
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 250px;
+    height: 100vh;
+    background-color: #1a252f;
+    padding-top: 20px;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.sidebar h2 {
+    color: #fff;
+    text-align: center;
+    font-size: 1.5rem;
+    margin-bottom: 30px;
+}
+
+.sidebar a {
+    display: block;
+    padding: 15px 20px;
+    color: #adb5bd;
+    text-decoration: none;
+    font-size: 1.1rem;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.sidebar a:hover, .sidebar a.active {
+    background-color: #007bff;
+    color: #fff;
+}
+
+/* Main Content */
+.main-content {
+    margin-left: 250px;
+    padding: 30px;
+    min-height: 100vh;
+}
+
+header {
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 2rem;
+    color: #1a252f;
+}
+
+/* Cards */
+.card {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.card h3 {
+    font-size: 1.25rem;
+    margin-bottom: 15px;
+    color: #1a252f;
+}
+
+.card h4 {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+    color: #1a252f;
+}
+
+.card p {
+    font-size: 1rem;
+    color: #555;
+}
+
+/* Table */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    font-size: 0.95rem;
+}
+
+th {
+    background-color: #007bff;
+    color: #fff;
+    font-weight: 500;
+}
+
+td {
+    border-bottom: 1px solid #e9ecef;
+    color: #333;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+/* Form */
+form {
+    margin-bottom: 30px;
+}
+
+form input[type="file"] {
+    padding: 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    margin-right: 10px;
+}
+
+form button {
+    padding: 10px 20px;
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+form button:hover {
+    background-color: #0056b3;
+}
+
+/* Loading */
+#loading {
+    font-style: italic;
+    color: #17a2b8;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Analysis Results */
+.analysis-results ul {
+    list-style-type: none;
+    padding: 0;
+}
+
+.analysis-results ul li {
+    font-size: 1rem;
+    color: #555;
+    margin-bottom: 10px;
+}
+
+.analysis-results ul li.unknown {
+    font-style: italic;
+    color: #dc3545;
+}
+
+/* Top Attacks */
+.card ul:not(.analysis-results ul) {
+    list-style-type: none;
+    padding: 0;
+}
+
+.card ul:not(.analysis-results ul) li {
+    font-size: 1rem;
+    color: #555;
+    margin-bottom: 10px;
+}
+
+/* Chart */
+.chart-canvas {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Chart Toggle */
+.chart-toggle {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.toggle-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    background-color: #e9ecef;
+    color: #333;
+    cursor: pointer;
+    margin: 0 5px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.toggle-btn.active, .toggle-btn:hover {
+    background-color: #007bff;
+    color: #fff;
+}
+
+/* Download Button */
+.download-btn {
+    display: block;
+    width: 100%;
+    max-width: 200px;
+    margin: 0 auto;
+    padding: 10px;
+    background-color: #17a2b8;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    transition: background-color 0.3s;
+}
+
+.download-btn:hover {
+    background-color: #138496;
+}
+
+/* Error Message */
+.error {
+    color: #dc3545;
+    font-style: italic;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 200px;
+    }
+
+    .main-content {
+        margin-left: 200px;
+        padding: 20px;
+    }
+
+    header h1 {
+        font-size: 1.5rem;
+    }
+
+    .card {
+        padding: 15px;
+    }
+
+    .chart-canvas {
+        max-width: 100%;
+    }
+
+    table, th, td {
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 15px;
+    }
+
+    form input[type="file"], form button, .download-btn {
+        width: 100%;
+        margin: 5px 0;
+    }
+
+    .toggle-btn {
+        padding: 6px 12px;
+        font-size: 0.9rem;
+    }
+}

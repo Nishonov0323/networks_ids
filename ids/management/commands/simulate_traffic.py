@@ -3,6 +3,7 @@ from django.core.management.base import BaseCommand
 from ids.services import PacketProcessor
 import time
 
+
 class Command(BaseCommand):
     help = 'Simulates network traffic for testing the IDS'
 
