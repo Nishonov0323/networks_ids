@@ -27,19 +27,6 @@ To start monitoring network traffic:
 ```bash
 python manage.py run_packet_capture start --interface eth0
 ```
-
-To stop monitoring:
-
-```bash
-python manage.py run_packet_capture stop
-```
-
-To check the status of monitoring interfaces:
-
-```bash
-python manage.py run_packet_capture status
-```
-
 ## Machine Learning Models
 
 The system uses a hierarchical multi-stage approach for intrusion detection:
