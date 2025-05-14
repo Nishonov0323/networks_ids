@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-!#q!p3!c*!p1sd=c+)a$%q93q9f-pi%^fs#f8tj2c53d33(4j8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['100.20.92.101', '44.225.181.72', '44.227.217.144', 'networks-ids-oagz.onrender.com', 'https://networks-ids-oagz.onrender.com/']
+ALLOWED_HOSTS = ['100.20.92.101', '44.225.181.72', '44.227.217.144', 'networks-ids-oagz.onrender.com', 'https://networks-ids-oagz.onrender.com']
 
 
 # Application definition
