@@ -12,8 +12,37 @@ from datetime import datetime, timedelta
 
 
 def dashboard(request):
+    # Get recent flows
     flows = NetworkFlow.objects.all().order_by('-timestamp')[:10]
-    context = {'flows': flows}
+    
+    # Get alert statistics
+    total_alerts = Alert.objects.count()
+    open_alerts = Alert.objects.filter(status='open').count()
+    critical_alerts = Alert.objects.filter(severity='critical', status='open').count()
+    
+    # Get recent alerts (last 5)
+    recent_alerts = Alert.objects.filter(status='open').order_by('-created_at')[:5]
+    
+    # Calculate prediction statistics from recent flows
+    recent_predictions = flows.values_list('prediction', flat=True)
+    benign_count = sum(1 for p in recent_predictions if p == 'Benign')
+    malicious_count = len(recent_predictions) - benign_count
+    
+    # Get attack type distribution from recent alerts
+    attack_distribution = Alert.objects.filter(
+        created_at__gte=timezone.now() - timedelta(hours=24)
+    ).values('attack_type').annotate(count=Count('id')).order_by('-count')[:5]
+    
+    context = {
+        'flows': flows,
+        'total_alerts': total_alerts,
+        'open_alerts': open_alerts,
+        'critical_alerts': critical_alerts,
+        'recent_alerts': recent_alerts,
+        'benign_count': benign_count,
+        'malicious_count': malicious_count,
+        'attack_distribution': attack_distribution,
+    }
     return render(request, 'ids/dashboard.html', context)
 
 
