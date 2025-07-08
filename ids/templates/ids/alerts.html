@@ -4,13 +4,193 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alerts</title>
+    <title>Ogohlantirishlar</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'ids/css/styles.css' %}">
+    <style>
+        .alert-card {
+            border-left: 4px solid;
+            margin-bottom: 15px;
+            padding: 15px;
+        }
+        .alert-critical { border-color: #dc3545; background-color: #f8d7da; }
+        .alert-high { border-color: #fd7e14; background-color: #ffeaa7; }
+        .alert-medium { border-color: #ffc107; background-color: #fff3cd; }
+        .alert-low { border-color: #28a745; background-color: #d4edda; }
+        
+        .alert-status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-open { background-color: #dc3545; color: white; }
+        .status-acknowledged { background-color: #ffc107; color: black; }
+        .status-resolved { background-color: #28a745; color: white; }
+        .status-false_positive { background-color: #6c757d; color: white; }
+        
+        .filters {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
 </head>
 <body>
-    <h1>Alerts</h1>
-    <p>Alerts page under construction.</p>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <h2>Kiberhujumni aniqlash tizimi</h2>
+        <a href="{% url 'dashboard' %}">Bosh menu</a>
+        <a href="{% url 'flows' %}">Oqimlar</a>
+        <a href="{% url 'analysis' %}">Analiz qilish</a>
+        <a href="{% url 'alerts' %}" class="active">Ogohlantirishlar</a>
+        <a href="{% url 'rules' %}">Qoidalar</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <header>
+            <h1>Ogohlantirishlar</h1>
+        </header>
+
+        <!-- Statistics -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ total_alerts }}</div>
+                <div class="stat-label">Jami ogohlantirishlar</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ open_alerts }}</div>
+                <div class="stat-label">Ochiq ogohlantirishlar</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ critical_alerts }}</div>
+                <div class="stat-label">Kritik ogohlantirishlar</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters">
+            <form method="get">
+                <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 15px; align-items: center;">
+                    <div>
+                        <label for="status">Holat:</label>
+                        <select name="status" id="status">
+                            <option value="">Hammasi</option>
+                            <option value="open" {% if status_filter == 'open' %}selected{% endif %}>Ochiq</option>
+                            <option value="acknowledged" {% if status_filter == 'acknowledged' %}selected{% endif %}>Qabul qilingan</option>
+                            <option value="resolved" {% if status_filter == 'resolved' %}selected{% endif %}>Hal qilingan</option>
+                            <option value="false_positive" {% if status_filter == 'false_positive' %}selected{% endif %}>Noto'g'ri signal</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="severity">Jiddiylik:</label>
+                        <select name="severity" id="severity">
+                            <option value="">Hammasi</option>
+                            <option value="critical" {% if severity_filter == 'critical' %}selected{% endif %}>Kritik</option>
+                            <option value="high" {% if severity_filter == 'high' %}selected{% endif %}>Yuqori</option>
+                            <option value="medium" {% if severity_filter == 'medium' %}selected{% endif %}>O'rta</option>
+                            <option value="low" {% if severity_filter == 'low' %}selected{% endif %}>Kam</option>
+                        </select>
+                    </div>
+                    <button type="submit">Filtrlash</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Alerts List -->
+        <div class="card">
+            <h3>So'nggi ogohlantirishlar</h3>
+            {% if alerts %}
+                {% for alert in alerts %}
+                    <div class="alert-card alert-{{ alert.severity }}">
+                        <div style="display: flex; justify-content: between; align-items: start;">
+                            <div style="flex: 1;">
+                                <h4>{{ alert.title }}</h4>
+                                <p>{{ alert.description }}</p>
+                                <div style="font-size: 0.9em; color: #666;">
+                                    <strong>Hujum turi:</strong> {{ alert.attack_type|default:"Noma'lum" }} |
+                                    <strong>Vaqt:</strong> {{ alert.created_at|date:"Y-m-d H:i" }} |
+                                    <strong>Jiddiylik:</strong> {{ alert.get_severity_display }}
+                                </div>
+                            </div>
+                            <div style="margin-left: 15px;">
+                                <span class="alert-status status-{{ alert.status }}">
+                                    {{ alert.get_status_display }}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <!-- Alert Actions -->
+                        {% if alert.status == 'open' %}
+                            <div style="margin-top: 10px;">
+                                <button onclick="updateAlertStatus({{ alert.id }}, 'acknowledge')" class="btn btn-warning">
+                                    Qabul qilish
+                                </button>
+                                <button onclick="updateAlertStatus({{ alert.id }}, 'resolve')" class="btn btn-success">
+                                    Hal qilish
+                                </button>
+                                <button onclick="updateAlertStatus({{ alert.id }}, 'false_positive')" class="btn btn-secondary">
+                                    Noto'g'ri signal
+                                </button>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>Hozircha ogohlantirishlar yo'q.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        function updateAlertStatus(alertId, action) {
+            fetch(`/alerts/${alertId}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: `action=${action}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Xatolik yuz berdi');
+            });
+        }
+    </script>
+    {% csrf_token %}
     <script src="{% static 'ids/js/alerts.js' %}"></script>
 </body>
 </html>

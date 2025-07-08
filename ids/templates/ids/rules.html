@@ -4,12 +4,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rules</title>
+    <title>Qoidalar</title>
     {% load static %}
     <link rel="stylesheet" href="{% static 'ids/css/styles.css' %}">
+    <style>
+        .rule-card {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+        .rule-status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-active { background-color: #28a745; color: white; }
+        .status-inactive { background-color: #6c757d; color: white; }
+        
+        .attack-type-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .attack-type-tag {
+            background-color: #007bff;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.8em;
+        }
+    </style>
 </head>
 <body>
-    <h1>Rules</h1>
-    <p>Rules page under construction.</p>
+    <!-- Sidebar Navigation -->
+    <div class="sidebar">
+        <h2>Kiberhujumni aniqlash tizimi</h2>
+        <a href="{% url 'dashboard' %}">Bosh menu</a>
+        <a href="{% url 'flows' %}">Oqimlar</a>
+        <a href="{% url 'analysis' %}">Analiz qilish</a>
+        <a href="{% url 'alerts' %}">Ogohlantirishlar</a>
+        <a href="{% url 'rules' %}" class="active">Qoidalar</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <header>
+            <h1>Ogohlantirish qoidalari</h1>
+        </header>
+
+        <div class="card">
+            <h3>Faol qoidalar</h3>
+            <p>Tizim tomonidan ishlatilayotgan ogohlantirish qoidalari:</p>
+            
+            {% if rules %}
+                {% for rule in rules %}
+                    <div class="rule-card">
+                        <div style="display: flex; justify-content: between; align-items: start;">
+                            <div style="flex: 1;">
+                                <h4>{{ rule.name }}</h4>
+                                <p>{{ rule.description }}</p>
+                                
+                                <div style="margin-top: 10px;">
+                                    <strong>Minimal jiddiylik bahosi:</strong> {{ rule.min_severity_score }}
+                                </div>
+                                
+                                {% if rule.attack_types %}
+                                    <div>
+                                        <strong>Hujum turlari:</strong>
+                                        <div class="attack-type-list">
+                                            {% for attack_type in rule.attack_types %}
+                                                <span class="attack-type-tag">{{ attack_type }}</span>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                {% endif %}
+                                
+                                <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                                    <strong>Yaratilgan:</strong> {{ rule.created_at|date:"Y-m-d H:i" }} |
+                                    <strong>Yangilangan:</strong> {{ rule.updated_at|date:"Y-m-d H:i" }}
+                                </div>
+                            </div>
+                            <div style="margin-left: 15px;">
+                                <span class="rule-status status-{% if rule.is_active %}active{% else %}inactive{% endif %}">
+                                    {% if rule.is_active %}Faol{% else %}Faol emas{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p>Hozircha qoidalar yo'q. Tizim tahlil paytida avtomatik qoidalar yaratadi.</p>
+                <div style="background-color: #e9ecef; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                    <h4>Qoidalar qanday ishlaydi?</h4>
+                    <ul>
+                        <li>Tizim tahlil qilish paytida zararli faoliyat aniqlaganda avtomatik qoidalar yaratadi</li>
+                        <li>Har bir hujum turi uchun alohida qoida mavjud</li>
+                        <li>Qoidalar jiddiylik darajasini belgilaydi</li>
+                        <li>Qoidalar asosida ogohlantirishlar yaratiladi</li>
+                    </ul>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Default Rules Information -->
+        <div class="card">
+            <h3>Avtomatik qoidalar</h3>
+            <p>Tizim quyidagi hujum turlari uchun avtomatik qoidalar yaratadi:</p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                <div style="background-color: #f8d7da; padding: 15px; border-radius: 5px;">
+                    <h4>Kritik darajadagi hujumlar</h4>
+                    <ul>
+                        <li>DDoS hujumlari</li>
+                        <li>Botnet faoliyati</li>
+                        <li>Infiltratsiya</li>
+                        <li>Heartbleed</li>
+                    </ul>
+                </div>
+                
+                <div style="background-color: #ffeaa7; padding: 15px; border-radius: 5px;">
+                    <h4>Yuqori darajadagi hujumlar</h4>
+                    <ul>
+                        <li>DoS hujumlari</li>
+                        <li>Brute Force hujumlari</li>
+                    </ul>
+                </div>
+                
+                <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px;">
+                    <h4>O'rta darajadagi hujumlar</h4>
+                    <ul>
+                        <li>Web hujumlar</li>
+                        <li>Boshqa noma'lum hujumlar</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{% static 'ids/js/rules.js' %}"></script>
 </body>
 </html>
