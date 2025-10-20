@@ -78,3 +78,57 @@ class NetworkFlow(models.Model):
 
     def __str__(self):
         return f"Flow at {self.timestamp} - Prediction: {self.prediction}"
+
+
+class Alert(models.Model):
+    SEVERITY_CHOICES = [
+        ('low', 'Kam'),
+        ('medium', 'O\'rta'),
+        ('high', 'Yuqori'),
+        ('critical', 'Kritik'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('open', 'Ochiq'),
+        ('acknowledged', 'Qabul qilingan'),
+        ('resolved', 'Hal qilingan'),
+        ('false_positive', 'Noto\'g\'ri signal'),
+    ]
+    
+    title = models.CharField(max_length=200, verbose_name="Sarlavha")
+    description = models.TextField(verbose_name="Tavsif")
+    severity = models.CharField(max_length=20, choices=SEVERITY_CHOICES, default='medium', verbose_name="Jiddiylik darajasi")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open', verbose_name="Holat")
+    network_flow = models.ForeignKey(NetworkFlow, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Tarmoq oqimi")
+    source_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Manba IP")
+    destination_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Maqsad IP")
+    attack_type = models.CharField(max_length=100, null=True, blank=True, verbose_name="Hujum turi")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Yaratilgan vaqt")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Yangilangan vaqt")
+    acknowledged_at = models.DateTimeField(null=True, blank=True, verbose_name="Qabul qilingan vaqt")
+    resolved_at = models.DateTimeField(null=True, blank=True, verbose_name="Hal qilingan vaqt")
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Ogohlantirish"
+        verbose_name_plural = "Ogohlantirishlar"
+    
+    def __str__(self):
+        return f"{self.title} - {self.get_severity_display()}"
+
+
+class AlertRule(models.Model):
+    name = models.CharField(max_length=200, verbose_name="Qoida nomi")
+    description = models.TextField(verbose_name="Tavsif")
+    attack_types = models.JSONField(default=list, verbose_name="Hujum turlari")  # List of attack types to trigger on
+    min_severity_score = models.FloatField(default=0.7, verbose_name="Minimal jiddiylik bahosi")
+    is_active = models.BooleanField(default=True, verbose_name="Faol")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Yaratilgan vaqt")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Yangilangan vaqt")
+    
+    class Meta:
+        verbose_name = "Ogohlantirish qoidasi"
+        verbose_name_plural = "Ogohlantirish qoidalari"
+    
+    def __str__(self):
+        return self.name

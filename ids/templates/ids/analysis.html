@@ -16,6 +16,8 @@
         <a href="{% url 'dashboard' %}">Bosh menu</a>
         <a href="{% url 'flows' %}">Oqimlar</a>
         <a href="{% url 'analysis' %}" class="active">Analiz qilish</a>
+        <a href="{% url 'alerts' %}">Ogohlantirishlar</a>
+        <a href="{% url 'rules' %}">Qoidalar</a>
     </div>
 
     <!-- Main Content -->
@@ -39,6 +41,15 @@
         {% endif %}
 
         {% if benign_count is not None %}
+            <!-- Alerts Created Notification -->
+            {% if alerts_created > 0 %}
+                <div class="card" style="background-color: #fff3cd; border-left: 4px solid #ffc107;">
+                    <h3>Ogohlantirishlar yaratildi</h3>
+                    <p><strong>{{ alerts_created }}</strong> ta yangi ogohlantirish yaratildi zararli faoliyat aniqlangani uchun.</p>
+                    <a href="{% url 'alerts' %}" class="btn btn-warning">Ogohlantirishlarni ko'rish</a>
+                </div>
+            {% endif %}
+
             <!-- Summary Statistics -->
             <div class="card analysis-results">
                 <h3>Statistika xulosasi</h3>
