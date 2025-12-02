@@ -119,20 +119,26 @@ def analysis(request):
             test_data = pd.read_csv(file_path)
         except Exception as e:
             fs.delete(filename)
-            return render(request, 'ids/analysis.html', {'error': f'Error reading CSV file: {str(e)}'})
+            return render(request, 'ids/analysis.html', {'error': f'CSV faylni o\'qishda xatolik: {str(e)}'})
 
         # Load the model, scaler, and label encoder
-        model = joblib.load(settings.BASE_DIR / 'ml_models/models/model.pkl')
-        scaler = joblib.load(settings.BASE_DIR / 'ml_models/models/scaler.pkl')
-        label_encoder = joblib.load(settings.BASE_DIR / 'ml_models/models/label_encoder.pkl')
+        try:
+            model = joblib.load(settings.BASE_DIR / 'ml_models/models/model.pkl')
+            scaler = joblib.load(settings.BASE_DIR / 'ml_models/models/scaler.pkl')
+            label_encoder = joblib.load(settings.BASE_DIR / 'ml_models/models/label_encoder.pkl')
+        except Exception as e:
+            fs.delete(filename)
+            return render(request, 'ids/analysis.html', {'error': f'Modellarni yuklashda xatolik: {str(e)}. Iltimos, model fayllari mavjudligini tekshiring.'})
 
-        # Preprocess the data
-        test_data = test_data.fillna(0)
-        X_test = scaler.transform(test_data)
-
-        # Make predictions
-        predictions = model.predict(X_test)
-        predicted_labels = label_encoder.inverse_transform(predictions)
+        # Preprocess the data and make predictions
+        try:
+            test_data = test_data.fillna(0)
+            X_test = scaler.transform(test_data)
+            predictions = model.predict(X_test)
+            predicted_labels = label_encoder.inverse_transform(predictions)
+        except Exception as e:
+            fs.delete(filename)
+            return render(request, 'ids/analysis.html', {'error': f'Ma\'lumotlarni qayta ishlashda xatolik: {str(e)}. CSV fayl formati to\'g\'ri ekanligini tekshiring.'})
 
         # Define known attack categories
         known_attacks = {
@@ -157,8 +163,8 @@ def analysis(request):
             else:
                 unknown_count += count
 
-        # Add Unknown category if there are any unknown labels
-        other_counts = known_attack_counts
+        # Create a copy for other_counts and add Unknown category if needed
+        other_counts = dict(known_attack_counts)
         if unknown_count > 0:
             other_counts['Unknown'] = unknown_count
 
@@ -179,100 +185,51 @@ def analysis(request):
         # Clean up the uploaded file
         fs.delete(filename)
 
-        # Create alerts for detected attacks
+        # Create alerts for detected attacks (optimized - one alert per attack type)
         alerts_created = 0
+        unique_attacks = {}
+
+        # Group predictions by attack type
         for i, prediction in enumerate(predicted_labels):
             if prediction != 'Benign':
-                # Create a dummy NetworkFlow object for the alert
-                # In a real scenario, you would have actual network flow data
-                try:
-                    # Create a basic network flow entry
-                    network_flow = NetworkFlow.objects.create(
-                        protocol=test_data.iloc[i].get('Protocol', 0),
-                        flow_duration=test_data.iloc[i].get('Flow Duration', 0),
-                        total_fwd_packets=test_data.iloc[i].get('Total Fwd Packets', 0),
-                        total_backward_packets=test_data.iloc[i].get('Total Backward Packets', 0),
-                        fwd_packets_length_total=test_data.iloc[i].get('Fwd Packets Length Total', 0),
-                        bwd_packets_length_total=test_data.iloc[i].get('Bwd Packets Length Total', 0),
-                        fwd_packet_length_max=test_data.iloc[i].get('Fwd Packet Length Max', 0),
-                        fwd_packet_length_min=test_data.iloc[i].get('Fwd Packet Length Min', 0),
-                        fwd_packet_length_mean=test_data.iloc[i].get('Fwd Packet Length Mean', 0),
-                        fwd_packet_length_std=test_data.iloc[i].get('Fwd Packet Length Std', 0),
-                        bwd_packet_length_max=test_data.iloc[i].get('Bwd Packet Length Max', 0),
-                        bwd_packet_length_min=test_data.iloc[i].get('Bwd Packet Length Min', 0),
-                        bwd_packet_length_mean=test_data.iloc[i].get('Bwd Packet Length Mean', 0),
-                        bwd_packet_length_std=test_data.iloc[i].get('Bwd Packet Length Std', 0),
-                        flow_bytes_s=test_data.iloc[i].get('Flow Bytes/s', 0),
-                        flow_packets_s=test_data.iloc[i].get('Flow Packets/s', 0),
-                        flow_iat_mean=test_data.iloc[i].get('Flow IAT Mean', 0),
-                        flow_iat_std=test_data.iloc[i].get('Flow IAT Std', 0),
-                        flow_iat_max=test_data.iloc[i].get('Flow IAT Max', 0),
-                        flow_iat_min=test_data.iloc[i].get('Flow IAT Min', 0),
-                        fwd_iat_total=test_data.iloc[i].get('Fwd IAT Total', 0),
-                        fwd_iat_mean=test_data.iloc[i].get('Fwd IAT Mean', 0),
-                        fwd_iat_std=test_data.iloc[i].get('Fwd IAT Std', 0),
-                        fwd_iat_max=test_data.iloc[i].get('Fwd IAT Max', 0),
-                        fwd_iat_min=test_data.iloc[i].get('Fwd IAT Min', 0),
-                        bwd_iat_total=test_data.iloc[i].get('Bwd IAT Total', 0),
-                        bwd_iat_mean=test_data.iloc[i].get('Bwd IAT Mean', 0),
-                        bwd_iat_std=test_data.iloc[i].get('Bwd IAT Std', 0),
-                        bwd_iat_max=test_data.iloc[i].get('Bwd IAT Max', 0),
-                        bwd_iat_min=test_data.iloc[i].get('Bwd IAT Min', 0),
-                        fwd_psh_flags=test_data.iloc[i].get('Fwd PSH Flags', 0),
-                        fwd_header_length=test_data.iloc[i].get('Fwd Header Length', 0),
-                        bwd_header_length=test_data.iloc[i].get('Bwd Header Length', 0),
-                        fwd_packets_s=test_data.iloc[i].get('Fwd Packets/s', 0),
-                        bwd_packets_s=test_data.iloc[i].get('Bwd Packets/s', 0),
-                        packet_length_min=test_data.iloc[i].get('Packet Length Min', 0),
-                        packet_length_max=test_data.iloc[i].get('Packet Length Max', 0),
-                        packet_length_mean=test_data.iloc[i].get('Packet Length Mean', 0),
-                        packet_length_std=test_data.iloc[i].get('Packet Length Std', 0),
-                        packet_length_variance=test_data.iloc[i].get('Packet Length Variance', 0),
-                        fin_flag_count=test_data.iloc[i].get('FIN Flag Count', 0),
-                        syn_flag_count=test_data.iloc[i].get('SYN Flag Count', 0),
-                        rst_flag_count=test_data.iloc[i].get('RST Flag Count', 0),
-                        psh_flag_count=test_data.iloc[i].get('PSH Flag Count', 0),
-                        ack_flag_count=test_data.iloc[i].get('ACK Flag Count', 0),
-                        urg_flag_count=test_data.iloc[i].get('URG Flag Count', 0),
-                        ece_flag_count=test_data.iloc[i].get('ECE Flag Count', 0),
-                        down_up_ratio=test_data.iloc[i].get('Down/Up Ratio', 0),
-                        avg_packet_size=test_data.iloc[i].get('Average Packet Size', 0),
-                        avg_fwd_segment_size=test_data.iloc[i].get('Avg Fwd Segment Size', 0),
-                        avg_bwd_segment_size=test_data.iloc[i].get('Avg Bwd Segment Size', 0),
-                        subflow_fwd_packets=test_data.iloc[i].get('Subflow Fwd Packets', 0),
-                        subflow_fwd_bytes=test_data.iloc[i].get('Subflow Fwd Bytes', 0),
-                        subflow_bwd_packets=test_data.iloc[i].get('Subflow Bwd Packets', 0),
-                        subflow_bwd_bytes=test_data.iloc[i].get('Subflow Bwd Bytes', 0),
-                        init_fwd_win_bytes=test_data.iloc[i].get('Init Fwd Win Bytes', 0),
-                        init_bwd_win_bytes=test_data.iloc[i].get('Init Bwd Win Bytes', 0),
-                        fwd_act_data_packets=test_data.iloc[i].get('Fwd Act Data Packets', 0),
-                        fwd_seg_size_min=test_data.iloc[i].get('Fwd Seg Size Min', 0),
-                        active_mean=test_data.iloc[i].get('Active Mean', 0),
-                        active_std=test_data.iloc[i].get('Active Std', 0),
-                        active_max=test_data.iloc[i].get('Active Max', 0),
-                        active_min=test_data.iloc[i].get('Active Min', 0),
-                        idle_mean=test_data.iloc[i].get('Idle Mean', 0),
-                        idle_std=test_data.iloc[i].get('Idle Std', 0),
-                        idle_max=test_data.iloc[i].get('Idle Max', 0),
-                        idle_min=test_data.iloc[i].get('Idle Min', 0),
-                        prediction=prediction
-                    )
-                    
-                    # Create alert for this detection
-                    alert = create_alert_from_prediction(network_flow, prediction)
-                    if alert:
-                        alerts_created += 1
-                        
-                except Exception as e:
-                    # If we can't create full NetworkFlow, just create a simpler alert
-                    alert = Alert.objects.create(
-                        title=f"{prediction} Attack Detected",
-                        description=f"Suspicious {prediction} activity detected in uploaded data",
-                        severity='medium',
-                        attack_type=prediction,
-                        status='open'
-                    )
-                    alerts_created += 1
+                if prediction not in unique_attacks:
+                    unique_attacks[prediction] = []
+                # Store only first 5 samples of each attack type to avoid memory issues
+                if len(unique_attacks[prediction]) < 5:
+                    unique_attacks[prediction].append(i)
+
+        # Create one alert per unique attack type
+        for attack_type, sample_indices in unique_attacks.items():
+            try:
+                # Determine severity based on attack type
+                severity = 'medium'  # default
+                attack_lower = attack_type.lower()
+                if 'ddos' in attack_lower or 'dos' in attack_lower:
+                    severity = 'critical'
+                elif 'botnet' in attack_lower or 'infiltration' in attack_lower or 'heartbleed' in attack_lower:
+                    severity = 'critical'
+                elif 'brute' in attack_lower:
+                    severity = 'high'
+                elif 'web' in attack_lower:
+                    severity = 'medium'
+
+                # Count total occurrences of this attack type
+                attack_count = prediction_counts.get(attack_type, 0)
+
+                # Create a single alert for this attack type
+                alert = Alert.objects.create(
+                    title=f"{attack_type} hujumi aniqlandi",
+                    description=f"Yuklangan ma'lumotlarda {attack_count} ta {attack_type} hujumi aniqlandi. "
+                                f"Bu tahlil jarayonida topilgan xavfli faoliyat.",
+                    severity=severity,
+                    attack_type=attack_type,
+                    status='open'
+                )
+                alerts_created += 1
+
+            except Exception as e:
+                print(f"Alert yaratishda xatolik: {str(e)}")
+                continue
 
         # Store data in session for download
         request.session['benign_count'] = benign_count

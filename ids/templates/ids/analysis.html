@@ -73,7 +73,11 @@
                 {% if top_attacks %}
                     <ul>
                         {% for label, count in top_attacks %}
-                            <li>{{ label }}: {{ count }} ({{ other_percentages.label }}%)</li>
+                            {% for pct_label, pct_value in other_percentages.items %}
+                                {% if pct_label == label %}
+                                    <li>{{ label }}: {{ count }} ({{ pct_value }}%)</li>
+                                {% endif %}
+                            {% endfor %}
                         {% endfor %}
                     </ul>
                 {% else %}
